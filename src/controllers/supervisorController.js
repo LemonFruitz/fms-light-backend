@@ -13,12 +13,14 @@ const { success, error } = require('../utils/responseHelper');
 // ─────────────────────────────────────────────
 // GET /api/v1/supervisor/shift-reports
 // List shift reports (default: hari ini)
-// Query params: date (YYYY-MM-DD), status, limit, offset
+// Query params: date_from, date_to, status, limit, offset
 // ─────────────────────────────────────────────
 exports.getShiftReports = async (req, res, next) => {
   try {
-    const { date, status, limit = 50, offset = 0 } = req.query;
-    const targetDate = date || new Date().toISOString().slice(0, 10);
+    const { date_from, date_to, date, status, limit = 500, offset = 0 } = req.query;
+    const today = new Date().toISOString().slice(0, 10);
+    const startDate = date_from || date || today;
+    const endDate = date_to || date || today;
 
     let sql = `
       SELECT 
@@ -30,10 +32,10 @@ exports.getShiftReports = async (req, res, next) => {
       FROM shift_reports sr
       LEFT JOIN users_driver ud ON ud.driver_id = sr.driver_id
       LEFT JOIN vehicles v ON v.unit_id = sr.unit_id
-      WHERE sr.timestamp_filled::date = $1
+      WHERE sr.timestamp_filled::date >= $1 AND sr.timestamp_filled::date <= $2
     `;
-    const params = [targetDate];
-    let idx = 2;
+    const params = [startDate, endDate];
+    let idx = 3;
 
     if (status) { sql += ` AND sr.overall_status = $${idx++}`; params.push(status); }
 
@@ -43,9 +45,9 @@ exports.getShiftReports = async (req, res, next) => {
     const { rows } = await query(sql, params);
 
     // Count total
-    let countSql = `SELECT COUNT(*) FROM shift_reports WHERE timestamp_filled::date = $1`;
-    const countParams = [targetDate];
-    let cidx = 2;
+    let countSql = `SELECT COUNT(*) FROM shift_reports WHERE timestamp_filled::date >= $1 AND timestamp_filled::date <= $2`;
+    const countParams = [startDate, endDate];
+    let cidx = 3;
     if (status) { countSql += ` AND overall_status = $${cidx++}`; countParams.push(status); }
     const { rows: countRows } = await query(countSql, countParams);
 
