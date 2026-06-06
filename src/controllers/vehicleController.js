@@ -6,6 +6,26 @@
 const { query }          = require('../config/database');
 const { success, error } = require('../utils/responseHelper');
 
+// GET /api/v1/vehicles?equipment_class=Excavator
+// List vehicles, optionally filtered by equipment_class
+exports.listVehicles = async (req, res, next) => {
+  try {
+    const { equipment_class } = req.query;
+    let sql = `SELECT unit_id, vehicle_type, equipment_class, status_unit, last_odometer_value
+               FROM vehicles WHERE 1=1`;
+    const params = [];
+    if (equipment_class && equipment_class !== 'ALL') {
+      sql += ` AND equipment_class = $1`;
+      params.push(equipment_class);
+    }
+    sql += ` ORDER BY unit_id`;
+    const { rows } = await query(sql, params);
+    return res.json(success('OK', rows));
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/v1/vehicles/search?q=DT-001
 // Autocomplete berbasis DB — dioptimasi untuk area minim sinyal (query cepat)
 exports.searchVehicles = async (req, res, next) => {
