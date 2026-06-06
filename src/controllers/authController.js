@@ -49,6 +49,7 @@ exports.login = async (req, res, next) => {
         driver_id: driver.driver_id,
         name: driver.name,
         role: driver.role,
+        equipment_class: driver.equipment_class,
       },
     }));
   } catch (err) {
