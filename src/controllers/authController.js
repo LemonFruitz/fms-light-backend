@@ -57,7 +57,7 @@ exports.login = async (req, res, next) => {
 };
 
 // GET /api/v1/auth/validate
-exports.validate = async (req, res) => {
+exports.validateToken = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json(error('Token tidak ditemukan.'));
