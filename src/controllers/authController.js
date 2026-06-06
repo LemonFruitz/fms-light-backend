@@ -14,7 +14,7 @@ exports.login = async (req, res, next) => {
     const { driver_id, unit_id } = req.body;
 
     const { rows } = await query(
-      'SELECT driver_id, name, status FROM users_driver WHERE driver_id = $1',
+      'SELECT driver_id, name, status, role FROM users_driver WHERE driver_id = $1',
       [driver_id]
     );
 
@@ -35,7 +35,7 @@ exports.login = async (req, res, next) => {
 
     return res.json(success('Login berhasil.', {
       token,
-      driver: { driver_id: driver.driver_id, name: driver.name },
+      driver: { driver_id: driver.driver_id, name: driver.name, role: driver.role },
       unit_id,
     }));
   } catch (err) {
