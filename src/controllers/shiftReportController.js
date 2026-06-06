@@ -91,7 +91,7 @@ exports.createShiftReport = async (req, res, next) => {
 
     if (device_timestamp) {
       const deviceTime = new Date(device_timestamp);
-      timeDriftSeconds = Math.abs((serverNow - deviceTime) / 1000);
+      timeDriftSeconds = Math.round(Math.abs((serverNow - deviceTime) / 1000));
       timeDriftFlagged = timeDriftSeconds > TIME_DRIFT_THRESHOLD;
     }
 
