@@ -8,6 +8,9 @@ const router = require('express').Router();
 router.use('/auth',         require('./authRoutes'));
 router.use('/vehicles',     require('./vehicleRoutes'));
 router.use('/shift-reports',require('./shiftReportRoutes'));
+router.use('/bd-reports',  require('./bdReportRoutes'));
+router.use('/supervisor',  require('./supervisorRoutes'));
+
 
 // Endpoint waktu server — digunakan frontend untuk deteksi time drift (PRD Acceptance Criteria)
 router.get('/server-time', (req, res) => {
