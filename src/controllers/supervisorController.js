@@ -167,6 +167,58 @@ exports.getEquipmentSummary = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/v1/supervisor/driver-ranking?days=30
+// Ranking driver berdasarkan compliance
+exports.getDriverRanking = async (req, res, next) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const { rows } = await query(`
+      SELECT 
+        sr.driver_id,
+        ud.name AS driver_name,
+        ud.role,
+        ud.equipment_class,
+        COUNT(*) AS total_reports,
+        SUM(CASE WHEN sr.fit_status='Fit' THEN 1 ELSE 0 END) AS fit_count,
+        SUM(CASE WHEN sr.p2h_status='Passed' THEN 1 ELSE 0 END) AS p2h_passed,
+        SUM(CASE WHEN sr.overall_status='Ready to Work' THEN 1 ELSE 0 END) AS rtw_count,
+        SUM(CASE WHEN sr.odometer_end IS NOT NULL THEN 1 ELSE 0 END) AS hm_completed,
+        SUM(CASE WHEN sr.validation_status='Approved' THEN 1 ELSE 0 END) AS approved_count,
+        COUNT(DISTINCT sr.timestamp_filled::date) AS days_reported,
+        MIN(sr.timestamp_filled) AS first_report,
+        MAX(sr.timestamp_filled) AS last_report
+      FROM shift_reports sr
+      LEFT JOIN users_driver ud ON ud.driver_id = sr.driver_id
+      WHERE sr.timestamp_filled >= CURRENT_DATE - $1 * INTERVAL '1 day'
+      GROUP BY sr.driver_id, ud.name, ud.role, ud.equipment_class
+      ORDER BY COUNT(*) DESC`, [days]);
+
+    const ranked = rows.map(r => {
+      const total = parseInt(r.total_reports) || 1;
+      const ftw_rate = Math.round(parseInt(r.fit_count) / total * 100);
+      const p2h_rate = Math.round(parseInt(r.p2h_passed) / total * 100);
+      const rtw_rate = Math.round(parseInt(r.rtw_count) / total * 100);
+      const hm_rate = Math.round(parseInt(r.hm_completed) / total * 100);
+      const approval_rate = Math.round(parseInt(r.approved_count) / total * 100);
+      // Weighted score: FTW 25% + P2H 25% + RTW 20% + HM 15% + Approval 15%
+      const score = Math.round(ftw_rate * 0.25 + p2h_rate * 0.25 + rtw_rate * 0.20 + hm_rate * 0.15 + approval_rate * 0.15);
+      return {
+        ...r,
+        total_reports: parseInt(r.total_reports),
+        fit_count: parseInt(r.fit_count),
+        p2h_passed: parseInt(r.p2h_passed),
+        rtw_count: parseInt(r.rtw_count),
+        hm_completed: parseInt(r.hm_completed),
+        approved_count: parseInt(r.approved_count),
+        days_reported: parseInt(r.days_reported),
+        ftw_rate, p2h_rate, rtw_rate, hm_rate, approval_rate, score,
+      };
+    });
+    ranked.sort((a, b) => b.score - a.score);
+    return res.json(success('OK', ranked));
+  } catch (err) { next(err); }
+};
+
 // PATCH /api/v1/supervisor/shift-reports/:report_id/end-shift
 exports.endShift = async (req, res, next) => {
   try {
