@@ -87,8 +87,87 @@ exports.validateReport = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/v1/supervisor/daily-trends?days=7
+// Trend data harian untuk dashboard PJO
+exports.getDailyTrends = async (req, res, next) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const { rows } = await query(`
+      SELECT 
+        d::date AS date,
+        COALESCE(sr.total,0) AS total_reports,
+        COALESCE(sr.rtw,0) AS rtw,
+        COALESCE(sr.unfit,0) AS unfit,
+        COALESCE(sr.breakdown,0) AS breakdown,
+        COALESCE(sr.drivers,0) AS active_drivers
+      FROM generate_series(CURRENT_DATE - $1 * INTERVAL '1 day', CURRENT_DATE, '1 day') d
+      LEFT JOIN (
+        SELECT timestamp_filled::date AS dt,
+          COUNT(*) AS total,
+          COUNT(DISTINCT driver_id) AS drivers,
+          SUM(CASE WHEN overall_status='Ready to Work' THEN 1 ELSE 0 END) AS rtw,
+          SUM(CASE WHEN overall_status='Driver Unfit' THEN 1 ELSE 0 END) AS unfit,
+          SUM(CASE WHEN overall_status='Unit Breakdown' THEN 1 ELSE 0 END) AS breakdown
+        FROM shift_reports
+        WHERE timestamp_filled::date >= CURRENT_DATE - $1 * INTERVAL '1 day'
+        GROUP BY dt
+      ) sr ON sr.dt = d::date
+      ORDER BY d`, [days]);
+
+    // BD stats
+    const { rows: bdRows } = await query(`
+      SELECT created_at::date AS date, COUNT(*) AS count
+      FROM bd_reports
+      WHERE created_at::date >= CURRENT_DATE - $1 * INTERVAL '1 day'
+      GROUP BY date ORDER BY date`, [days]);
+    const bdMap = {};
+    bdRows.forEach(r => { bdMap[r.date] = parseInt(r.count); });
+
+    const trends = rows.map(r => ({
+      date: r.date,
+      total_reports: parseInt(r.total_reports),
+      rtw: parseInt(r.rtw),
+      unfit: parseInt(r.unfit),
+      breakdown: parseInt(r.breakdown),
+      active_drivers: parseInt(r.active_drivers),
+      bd_reports: bdMap[r.date] || 0,
+    }));
+
+    return res.json(success('OK', trends));
+  } catch (err) { next(err); }
+};
+
+// GET /api/v1/supervisor/equipment-summary
+// Ringkasan per jenis unit untuk PJO
+exports.getEquipmentSummary = async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { rows } = await query(`
+      SELECT 
+        v.equipment_class,
+        COUNT(*) AS total_units,
+        SUM(CASE WHEN v.status_unit='Ready' THEN 1 ELSE 0 END) AS ready,
+        SUM(CASE WHEN v.status_unit='Breakdown' THEN 1 ELSE 0 END) AS bd,
+        SUM(CASE WHEN v.status_unit='Maintenance' THEN 1 ELSE 0 END) AS mt,
+        COALESCE(sr.driver_count,0) AS drivers_reported,
+        COALESCE(sr.avg_hm,0) AS avg_hm_per_shift
+      FROM vehicles v
+      LEFT JOIN (
+        SELECT ud.equipment_class AS ec, COUNT(DISTINCT s.driver_id) AS driver_count,
+          ROUND(AVG(CASE WHEN s.odometer_end IS NOT NULL THEN s.odometer_end - s.odometer_entered ELSE NULL END)) AS avg_hm
+        FROM shift_reports s
+        LEFT JOIN users_driver ud ON ud.driver_id = s.driver_id
+        WHERE s.timestamp_filled::date = $1
+        GROUP BY ud.equipment_class
+      ) sr ON sr.ec = v.equipment_class
+      WHERE v.equipment_class IS NOT NULL
+      GROUP BY v.equipment_class, sr.driver_count, sr.avg_hm
+      ORDER BY v.equipment_class`, [today]);
+    return res.json(success('OK', rows));
+  } catch (err) { next(err); }
+};
+
 // PATCH /api/v1/supervisor/shift-reports/:report_id/end-shift
-// Driver/CCR input HM akhir shift
 exports.endShift = async (req, res, next) => {
   try {
     const { report_id } = req.params;
