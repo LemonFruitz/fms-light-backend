@@ -3,11 +3,11 @@ const { pool } = require('../config/database');
 const listManpower = async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1"
+      'SELECT * FROM users_driver ORDER BY name ASC LIMIT 5'
     );
     return res.json({
       success: true,
-      tables: result.rows
+      data: result.rows
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
