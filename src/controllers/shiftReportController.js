@@ -33,6 +33,8 @@ exports.createShiftReport = async (req, res, next) => {
       signature_data_uri,
       device_timestamp,      // ISO string dari perangkat (untuk deteksi manipulasi jam)
       offline_device_id,
+      latitude,
+      longitude,
     } = req.body;
 
     // ── 1. Validasi status kendaraan (Modul 1 PRD) ────────────────
@@ -139,6 +141,13 @@ exports.createShiftReport = async (req, res, next) => {
         `INSERT INTO maintenance_tickets (report_id, unit_id, item_id, description)
          VALUES ($1, $2, $3, $4)`,
         [reportId, unit_id, item.item_id, item.action_if_fail || 'Perlu pemeriksaan lebih lanjut.']
+      );
+    }
+    // GPS update
+    if (latitude && longitude) {
+      await client.query(
+        'UPDATE shift_reports SET latitude=$1, longitude=$2 WHERE report_id=$3',
+        [latitude, longitude, reportId]
       );
     }
 
