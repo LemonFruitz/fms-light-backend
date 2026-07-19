@@ -37,6 +37,10 @@ exports.createShiftReport = async (req, res, next) => {
       longitude,
     } = req.body;
 
+    // Null guard: Absensi Manual dari CCR tidak mengirim FTW answers dan P2H results
+    const ftwAnswers = fit_to_work_answers || [];
+    const p2hResults = p2h_results || [];
+
     // ── 1. Validasi status kendaraan (Modul 1 PRD) ────────────────
     const { rows: vehicleRows } = await client.query(
       'SELECT status_unit, last_odometer_value FROM vehicles WHERE unit_id = $1',
@@ -58,7 +62,7 @@ exports.createShiftReport = async (req, res, next) => {
     );
 
     let fitStatus = 'Fit';
-    const answersWithIdeal = fit_to_work_answers.map(a => {
+    const answersWithIdeal = ftwAnswers.map(a => {
       const q = questions.find(q => q.question_id === a.question_id);
       const isIdeal = q ? (a.answer === q.ideal_answer) : true;
       if (!isIdeal) fitStatus = 'Unfit';
@@ -72,7 +76,7 @@ exports.createShiftReport = async (req, res, next) => {
 
     let p2hStatus = 'Passed';
     const nonCriticalFailItems = [];
-    const resultsWithClassification = p2h_results.map(r => {
+    const resultsWithClassification = p2hResults.map(r => {
       const item = checkItems.find(i => i.item_id === r.item_id);
       const classification = item ? item.classification : 'NON_CRITICAL';
 
