@@ -31,16 +31,20 @@ exports.createShiftReport = async (req, res, next) => {
       longitude,
     } = req.body;
 
-    // Default value untuk kolom NOT NULL — Absensi Manual dari CCR tidak
+    // Sumber pengisian. 'CCR-Manual' = Absensi Manual dari CCR yang tidak
     // mengirim data FTW, P2H, odometer, foto, maupun tanda tangan.
-    // Catatan: photo_odometer_url & signature_data_uri berkolom NOT NULL,
-    // jadi fallback-nya string kosong ('') bukan null agar tidak memicu 23502.
+    const submitted_by = req.body.submitted_by || null;
+    const isManual = submitted_by === 'CCR-Manual';
+
+    // Default value untuk field yang mungkin kosong (mis. Absensi Manual).
+    // photo_odometer_url & signature_data_uri kini nullable (migrasi 002),
+    // jadi fallback-nya null saat tidak dikirim.
     const shift = req.body.shift || (new Date().getHours() >= 7 && new Date().getHours() < 19 ? '1' : '2');
     const ftwAnswers = req.body.fit_to_work_answers || [];   // Array: [{ question_id, answer: boolean }]
     const p2hResults = req.body.p2h_results || [];           // Array: [{ item_id, is_ok: boolean, notes? }]
-    const odometer_entered = req.body.odometer_entered || 0;
-    const signature_data_uri = req.body.signature_data_uri || '';
-    const photo_odometer_url = req.body.photo_odometer_url || '';
+    const odometer_entered = isManual ? 0 : (req.body.odometer_entered || 0);
+    const signature_data_uri = req.body.signature_data_uri || null;
+    const photo_odometer_url = req.body.photo_odometer_url || null;
     const device_timestamp = req.body.device_timestamp || new Date().toISOString(); // ISO string dari perangkat (deteksi manipulasi jam)
 
     // ── 1. Validasi status kendaraan (Modul 1 PRD) ────────────────
@@ -111,9 +115,9 @@ exports.createShiftReport = async (req, res, next) => {
         timestamp_filled, fit_status, p2h_status,
         odometer_entered, photo_odometer_url, signature_data_uri,
         device_timestamp, time_drift_seconds, time_drift_flagged,
-        sync_status, offline_device_id
+        sync_status, offline_device_id, submitted_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
       ) RETURNING report_id, overall_status, timestamp_submitted`,
       [
         reportId, driver_id, unit_id,
@@ -121,7 +125,7 @@ exports.createShiftReport = async (req, res, next) => {
         fitStatus, p2hStatus,
         odometer_entered, photo_odometer_url, signature_data_uri,
         device_timestamp, timeDriftSeconds, timeDriftFlagged,
-        'synced', offline_device_id || null
+        'synced', offline_device_id || null, submitted_by
       ]
     );
 
