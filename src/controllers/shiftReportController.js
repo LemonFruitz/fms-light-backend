@@ -26,20 +26,26 @@ exports.createShiftReport = async (req, res, next) => {
     const {
       driver_id,
       unit_id,
-      fit_to_work_answers,   // Array: [{ question_id, answer: boolean }]
-      p2h_results,           // Array: [{ item_id, is_ok: boolean, notes? }]
-      odometer_entered,
-      photo_odometer_url,
-      signature_data_uri,
-      device_timestamp,      // ISO string dari perangkat (untuk deteksi manipulasi jam)
       offline_device_id,
       latitude,
       longitude,
     } = req.body;
 
-    // Null guard: Absensi Manual dari CCR tidak mengirim FTW answers dan P2H results
-    const ftwAnswers = fit_to_work_answers || [];
-    const p2hResults = p2h_results || [];
+    // Sumber pengisian. 'CCR-Manual' = Absensi Manual dari CCR yang tidak
+    // mengirim data FTW, P2H, odometer, foto, maupun tanda tangan.
+    const submitted_by = req.body.submitted_by || null;
+    const isManual = submitted_by === 'CCR-Manual';
+
+    // Default value untuk field yang mungkin kosong (mis. Absensi Manual).
+    // photo_odometer_url & signature_data_uri kini nullable (migrasi 002),
+    // jadi fallback-nya null saat tidak dikirim.
+    const shift = req.body.shift || (new Date().getHours() >= 7 && new Date().getHours() < 19 ? '1' : '2');
+    const ftwAnswers = req.body.fit_to_work_answers || [];   // Array: [{ question_id, answer: boolean }]
+    const p2hResults = req.body.p2h_results || [];           // Array: [{ item_id, is_ok: boolean, notes? }]
+    const odometer_entered = isManual ? 0 : (req.body.odometer_entered || 0);
+    const signature_data_uri = req.body.signature_data_uri || null;
+    const photo_odometer_url = req.body.photo_odometer_url || null;
+    const device_timestamp = req.body.device_timestamp || new Date().toISOString(); // ISO string dari perangkat (deteksi manipulasi jam)
 
     // ── 1. Validasi status kendaraan (Modul 1 PRD) ────────────────
     const { rows: vehicleRows } = await client.query(
@@ -109,9 +115,9 @@ exports.createShiftReport = async (req, res, next) => {
         timestamp_filled, fit_status, p2h_status,
         odometer_entered, photo_odometer_url, signature_data_uri,
         device_timestamp, time_drift_seconds, time_drift_flagged,
-        sync_status, offline_device_id
+        sync_status, offline_device_id, submitted_by
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
       ) RETURNING report_id, overall_status, timestamp_submitted`,
       [
         reportId, driver_id, unit_id,
@@ -119,24 +125,30 @@ exports.createShiftReport = async (req, res, next) => {
         fitStatus, p2hStatus,
         odometer_entered, photo_odometer_url, signature_data_uri,
         device_timestamp, timeDriftSeconds, timeDriftFlagged,
-        'synced', offline_device_id || null
+        'synced', offline_device_id || null, submitted_by
       ]
     );
 
     // ── 6. Simpan detail jawaban Fit-to-Work ──────────────────────
-    for (const a of answersWithIdeal) {
-      await client.query(
-        'INSERT INTO fit_to_work_answers (report_id, question_id, answer, is_ideal) VALUES ($1, $2, $3, $4)',
-        [reportId, a.question_id, a.answer, a.is_ideal]
-      );
+    // Skip jika array kosong (mis. Absensi Manual dari CCR).
+    if (ftwAnswers.length > 0) {
+      for (const a of answersWithIdeal) {
+        await client.query(
+          'INSERT INTO fit_to_work_answers (report_id, question_id, answer, is_ideal) VALUES ($1, $2, $3, $4)',
+          [reportId, a.question_id, a.answer, a.is_ideal]
+        );
+      }
     }
 
     // ── 7. Simpan hasil P2H per komponen ──────────────────────────
-    for (const r of resultsWithClassification) {
-      await client.query(
-        'INSERT INTO p2h_inspection_results (report_id, item_id, is_ok, classification, notes) VALUES ($1, $2, $3, $4, $5)',
-        [reportId, r.item_id, r.is_ok, r.classification, r.notes || null]
-      );
+    // Skip jika array kosong (mis. Absensi Manual dari CCR).
+    if (p2hResults.length > 0) {
+      for (const r of resultsWithClassification) {
+        await client.query(
+          'INSERT INTO p2h_inspection_results (report_id, item_id, is_ok, classification, notes) VALUES ($1, $2, $3, $4, $5)',
+          [reportId, r.item_id, r.is_ok, r.classification, r.notes || null]
+        );
+      }
     }
 
     // ── 8. Buat tiket maintenance untuk NON_CRITICAL yang rusak ──
