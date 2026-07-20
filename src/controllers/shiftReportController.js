@@ -257,3 +257,43 @@ exports.getReportById = async (req, res, next) => {
     next(err);
   }
 };
+
+// ─────────────────────────────────────────────
+// PATCH /api/v1/shift-reports/:id/edit
+// Edit sebagian field laporan shift (partial update).
+// Catatan:
+//  - overall_status TIDAK dapat diedit — kolom GENERATED yang otomatis
+//    dihitung ulang dari fit_status & p2h_status.
+//  - Update ini melewati trigger validasi odometer (trigger hanya BEFORE
+//    INSERT), sehingga koreksi manual oleh admin dimungkinkan.
+// ─────────────────────────────────────────────
+exports.editShiftReport = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { unit_id, odometer_entered, odometer_end, fit_status } = req.body;
+
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (unit_id !== undefined)         { fields.push(`unit_id = $${idx++}`);          values.push(unit_id); }
+    if (odometer_entered !== undefined){ fields.push(`odometer_entered = $${idx++}`); values.push(odometer_entered); }
+    if (odometer_end !== undefined)    { fields.push(`odometer_end = $${idx++}`);     values.push(odometer_end); }
+    if (fit_status !== undefined)      { fields.push(`fit_status = $${idx++}`);       values.push(fit_status); }
+
+    if (!fields.length) {
+      return res.status(400).json(error('Tidak ada field yang diperbarui.'));
+    }
+
+    values.push(id);
+    const { rows } = await query(
+      `UPDATE shift_reports SET ${fields.join(', ')} WHERE report_id = $${idx} RETURNING *`,
+      values
+    );
+
+    if (!rows.length) return res.status(404).json(error('Laporan tidak ditemukan.'));
+    return res.json(success('Laporan shift berhasil diperbarui.', rows[0]));
+  } catch (err) {
+    next(err);
+  }
+};

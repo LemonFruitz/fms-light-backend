@@ -18,4 +18,7 @@ router.get('/driver/:driver_id', authenticate, ctrl.getReportsByDriver);
 // Detail satu laporan
 router.get('/:report_id',  authenticate, ctrl.getReportById);
 
+// Edit sebagian field laporan shift
+router.patch('/:id/edit',  authenticate, ctrl.editShiftReport);
+
 module.exports = router;
