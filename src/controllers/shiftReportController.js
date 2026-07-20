@@ -269,6 +269,13 @@ exports.getReportById = async (req, res, next) => {
 // ─────────────────────────────────────────────
 exports.editShiftReport = async (req, res, next) => {
   try {
+    // Otorisasi: hanya CCR (id "CCR-…") dan Supervisor (id "SPV-…") boleh edit.
+    // Catatan: payload JWT memakai field driver_id (lihat authController).
+    const userId = req.user?.driver_id || '';
+    if (!userId.startsWith('CCR-') && !userId.startsWith('SPV-')) {
+      return res.status(403).json(error('Hanya CCR dan Supervisor yang boleh edit report.'));
+    }
+
     const { id } = req.params;
     const { unit_id, odometer_entered, odometer_end, fit_status } = req.body;
 
