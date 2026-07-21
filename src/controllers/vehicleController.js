@@ -126,3 +126,54 @@ exports.updateVehicleNotes = async (req, res, next) => {
     return res.json(success('Notes diperbarui.', rows[0]));
   } catch (err) { next(err); }
 };
+
+// POST /api/v1/vehicles — tambah unit baru
+exports.createVehicle = async (req, res) => {
+  const { unit_id, vehicle_type, equipment_class } = req.body;
+  try {
+    const { rows } = await query(
+      "INSERT INTO vehicles (unit_id, vehicle_type, equipment_class, status_unit) VALUES ($1,$2,$3,'Ready') RETURNING *",
+      [unit_id, vehicle_type, equipment_class]
+    );
+    return res.status(201).json({ success: true, data: rows[0] });
+  } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ success: false, message: 'Unit ID sudah ada' });
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PATCH /api/v1/vehicles/:id/edit — edit unit
+exports.editVehicle = async (req, res) => {
+  const { id } = req.params;
+  const { vehicle_type, equipment_class } = req.body;
+  try {
+    const fields = []; const values = []; let idx = 1;
+    if (vehicle_type) { fields.push('vehicle_type = $' + idx++); values.push(vehicle_type); }
+    if (equipment_class) { fields.push('equipment_class = $' + idx++); values.push(equipment_class); }
+    if (!fields.length) return res.status(400).json({ success: false, message: 'No fields' });
+    values.push(id);
+    const { rows } = await query(
+      'UPDATE vehicles SET ' + fields.join(', ') + ' WHERE unit_id = $' + idx + ' RETURNING *', values
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Not found' });
+    return res.json({ success: true, data: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// DELETE /api/v1/vehicles/:id — hapus unit
+exports.deleteVehicle = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await query('DELETE FROM vehicles WHERE unit_id = $1', [id]);
+    if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Not found' });
+    return res.json({ success: true, message: 'Unit dihapus' });
+  } catch (error) {
+    // Unit masih direferensikan shift_reports (ON DELETE RESTRICT) / maintenance_tickets.
+    if (error.code === '23503') {
+      return res.status(409).json({ success: false, message: 'Unit tidak dapat dihapus karena masih memiliki data terkait (shift report / tiket maintenance).' });
+    }
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

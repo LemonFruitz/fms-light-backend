@@ -13,4 +13,9 @@ router.get('/:unit_id',          authenticate, ctrl.getVehicleById);
 router.patch('/:unit_id/status', authenticate, ctrl.updateVehicleStatus);
 router.patch('/:unit_id/notes',  authenticate, ctrl.updateVehicleNotes);
 
+// CRUD unit
+router.post('/',            authenticate, ctrl.createVehicle);
+router.patch('/:id/edit',   authenticate, ctrl.editVehicle);
+router.delete('/:id',       authenticate, ctrl.deleteVehicle);
+
 module.exports = router;
