@@ -14,6 +14,8 @@ const manpowerRoutes = require('./manpowerRoutes');
 router.use('/manpower', manpowerRoutes);
 const maintenanceRoutes = require('./maintenanceRoutes');
 router.use('/maintenance', maintenanceRoutes);
+const ritasiRoutes = require('./ritasiRoutes');
+router.use('/ritasi', ritasiRoutes);
 
 // Endpoint waktu server — digunakan frontend untuk deteksi time drift (PRD Acceptance Criteria)
 router.get('/server-time', (req, res) => {
