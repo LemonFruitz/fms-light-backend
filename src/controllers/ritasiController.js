@@ -78,7 +78,7 @@ const createRitasi = async (req, res) => {
 // PATCH /api/v1/ritasi/:id/tonase
 const updateTonase = async (req, res) => {
   const { id } = req.params;
-  const { tonase, checker_tb } = req.body;
+  const { tonase, checker_tb, jam_timbang } = req.body;
 
   try {
     if (!tonase || parseFloat(tonase) <= 0) {
@@ -87,10 +87,10 @@ const updateTonase = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE ritasi_hauling
-       SET tonase = $1, checker_tb = $2, status = 'Completed', updated_at = NOW()
-       WHERE ritasi_id = $3
+       SET tonase = $1, checker_tb = $2, jam_timbang = $3, status = 'Completed', updated_at = NOW()
+       WHERE ritasi_id = $4
        RETURNING *`,
-      [parseFloat(tonase), checker_tb || null, id]
+      [parseFloat(tonase), checker_tb || null, jam_timbang || new Date().toISOString(), id]
     );
 
     if (!result.rows.length) {
@@ -100,6 +100,46 @@ const updateTonase = async (req, res) => {
     return res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error('updateTonase error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PUT / PATCH /api/v1/ritasi/:id
+const editRitasi = async (req, res) => {
+  const { id } = req.params;
+  const { unit_id, jam_sample, loading_area, dumping_area, shift, catatan } = req.body;
+
+  try {
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (unit_id !== undefined) { fields.push('unit_id = $' + idx++); values.push(unit_id); }
+    if (jam_sample !== undefined) { fields.push('jam_sample = $' + idx++); values.push(jam_sample); }
+    if (loading_area !== undefined) { fields.push('loading_area = $' + idx++); values.push(loading_area); }
+    if (dumping_area !== undefined) { fields.push('dumping_area = $' + idx++); values.push(dumping_area); }
+    if (shift !== undefined) { fields.push('shift = $' + idx++); values.push(shift); }
+    if (catatan !== undefined) { fields.push('catatan = $' + idx++); values.push(catatan); }
+
+    if (!fields.length) {
+      return res.status(400).json({ success: false, message: 'Tidak ada field yang diupdate' });
+    }
+
+    fields.push('updated_at = NOW()');
+    values.push(id);
+
+    const result = await pool.query(
+      `UPDATE ritasi_hauling SET ${fields.join(', ')} WHERE ritasi_id = $${idx} RETURNING *`,
+      values
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, message: 'Data tidak ditemukan' });
+    }
+
+    return res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('editRitasi error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -137,7 +177,7 @@ const statsRitasi = async (req, res) => {
     const where = 'WHERE ' + conditions.join(' AND ');
 
     const result = await pool.query(
-      `SELECT
+      `SELECT 
         COUNT(*) as total_ritasi,
         COUNT(CASE WHEN status = 'Pending Timbangan' THEN 1 END) as pending,
         COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed,
@@ -153,4 +193,11 @@ const statsRitasi = async (req, res) => {
   }
 };
 
-module.exports = { listRitasi, createRitasi, updateTonase, deleteRitasi, statsRitasi };
+module.exports = { 
+  listRitasi, 
+  createRitasi, 
+  updateTonase, 
+  editRitasi, 
+  deleteRitasi, 
+  statsRitasi 
+};
