@@ -3,7 +3,6 @@
  * Konfigurasi koneksi PostgreSQL menggunakan connection pool (pg-pool).
  * Pool memungkinkan efisiensi koneksi pada skenario multi-user lapangan.
  */
-
 const { Pool } = require('pg');
 require('dotenv').config();
 
@@ -23,20 +22,40 @@ const pool = new Pool({
 
 // Verifikasi koneksi saat startup
 pool.on('connect', () => {
-  // Winston logger belum tersedia di sini, gunakan console
   console.log('[DB] Koneksi baru ke PostgreSQL berhasil dibuat.');
 });
 
+// PENTING: JANGAN process.exit() di sini.
+// Idle client bisa error kapan saja (misal Neon compute suspend lalu
+// idle connection di pool ikut terputus) — ini NORMAL dan pool.query()
+// berikutnya otomatis akan buka koneksi baru. Kalau proses di-exit,
+// seluruh server mati dan butuh restart manual — itu penyebab
+// "ETIMEDOUT terus-menerus" yang sebenarnya server sudah crash diam-diam.
 pool.on('error', (err) => {
-  console.error('[DB] Unexpected error on idle client:', err.message);
-  process.exit(-1);
+  console.error('[DB] Idle client error (non-fatal, pool akan reconnect):', err.message);
+  // Sengaja TIDAK memanggil process.exit() — biarkan pool self-heal.
 });
 
 /**
  * Helper query — selalu gunakan parameterized query ($1, $2, ...)
  * untuk mencegah SQL injection.
+ * Retry sekali kalau gagal karena idle connection yang baru terputus.
  */
-const query = (text, params) => pool.query(text, params);
+const query = async (text, params) => {
+  try {
+    return await pool.query(text, params);
+  } catch (err) {
+    // Kalau koneksi terputus (ECONNRESET / Connection terminated),
+    // coba sekali lagi — pool akan membuat koneksi baru otomatis.
+    const retryable = ['ECONNRESET', 'ETIMEDOUT', '57P01'].includes(err.code) ||
+                       /Connection terminated/i.test(err.message);
+    if (retryable) {
+      console.warn('[DB] Query gagal, mencoba ulang sekali:', err.message);
+      return await pool.query(text, params);
+    }
+    throw err;
+  }
+};
 
 /**
  * Untuk transaksi multi-step (misal: simpan shift_report + update vehicles).
