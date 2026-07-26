@@ -16,7 +16,7 @@ const pool = new Pool({
   min:      parseInt(process.env.DB_POOL_MIN) || 2,
   max:      parseInt(process.env.DB_POOL_MAX) || 10,
   idleTimeoutMillis:    30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 15000,
   // SSL untuk Neon/cloud DB. Set DB_SSL=true di Render. Lokal: kosongkan.
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
 });
